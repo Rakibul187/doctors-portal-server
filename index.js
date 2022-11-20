@@ -40,6 +40,22 @@ async function run() {
         const appointmentOptionCollection = client.db("doctorsPortal").collection("appointmentOptions");
         const bookingsCollection = client.db("doctorsPortal").collection("bookings");
         const usersCollection = client.db("doctorsPortal").collection("users");
+        const doctorsCollection = client.db("doctorsPortal").collection("doctors");
+
+        // Note: make sure varify admin use after jwt
+        const varifyAdmin = async (req, res, next) => {
+
+            const decodedEmail = req.decoded.email;
+            const query = { email: decodedEmail }
+            const user = await usersCollection.findOne(query);
+
+            if (user?.role !== 'admin') {
+                return res.status(403).send({ message: "forbidden access" })
+            }
+
+            next()
+        }
+
 
         app.get('/appoinmentOptions', async (req, res) => {
             const date = req.query.date;
@@ -83,6 +99,7 @@ async function run() {
                     $project: {
                         name: 1,
                         slots: 1,
+                        price: 1,
                         booked: {
                             $map: {
                                 input: '$booked',
@@ -95,6 +112,7 @@ async function run() {
                 {
                     $project: {
                         name: 1,
+                        price: 1,
                         slots: {
                             $setDifference: ['$slots', '$booked']
                         }
@@ -102,6 +120,13 @@ async function run() {
                 }
             ]).toArray();
             res.send(options);
+        })
+
+
+        app.get('/appointmentSpecialty', async (req, res) => {
+            const query = {}
+            const result = await appointmentOptionCollection.find(query).project({ name: 1 }).toArray()
+            res.send(result)
         })
 
 
@@ -127,6 +152,13 @@ async function run() {
             }
             const bookings = await bookingsCollection.find(query).toArray()
             res.send(bookings)
+        })
+
+        app.get('/bookings/:id', async (req, res) => {
+            const id = req.params.id;
+            const query = { _id: ObjectId(id) }
+            const booking = await bookingsCollection.findOne(query);
+            res.send(booking)
         })
 
         app.post('/bookings', async (req, res) => {
@@ -185,14 +217,7 @@ async function run() {
             res.send(result)
         })
 
-        app.put('/users/admin/:id', varifyJwt, async (req, res) => {
-            const decodedEmail = req.decoded.email;
-            const query = { email: decodedEmail }
-            const user = await usersCollection.findOne(query);
-
-            if (user?.role !== 'admin') {
-                return res.status(403).send({ message: "forbidden access" })
-            }
+        app.put('/users/admin/:id', varifyJwt, varifyAdmin, async (req, res) => {
 
             const id = req.params.id
             const filter = { _id: ObjectId(id) }
@@ -203,6 +228,39 @@ async function run() {
                 }
             }
             const result = await usersCollection.updateOne(filter, updatedDoc, options)
+            res.send(result)
+        })
+
+        // temporary to update price field to appointment option
+        app.get('/addPrice', async (req, res) => {
+            const filter = {}
+            const options = { upsert: true }
+            const updatedDoc = {
+                $set: {
+                    price: 99
+                }
+            }
+            const result = await appointmentOptionCollection.updateMany(filter, updatedDoc, options)
+            res.send(result)
+        })
+
+
+        app.get('/doctors', varifyJwt, varifyAdmin, async (req, res) => {
+            const query = {}
+            const doctors = await doctorsCollection.find(query).toArray()
+            res.send(doctors)
+        })
+
+        app.post('/doctors', varifyJwt, async (req, res) => {
+            const doctor = req.body
+            const result = await doctorsCollection.insertOne(doctor)
+            res.send(result)
+        })
+
+        app.delete('/doctors/:id', varifyJwt, async (req, res) => {
+            const id = req.params.id;
+            const filter = { _id: ObjectId(id) }
+            const result = await doctorsCollection.deleteOne(filter);
             res.send(result)
         })
 
