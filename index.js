@@ -43,6 +43,7 @@ async function run() {
         const bookingsCollection = client.db("doctorsPortal").collection("bookings");
         const usersCollection = client.db("doctorsPortal").collection("users");
         const doctorsCollection = client.db("doctorsPortal").collection("doctors");
+        const paymentCollection = client.db("doctorsPortal").collection("payments");
 
         // Note: make sure varify admin use after jwt
         const varifyAdmin = async (req, res, next) => {
@@ -182,23 +183,41 @@ async function run() {
             res.send(result)
         })
 
-        app.post("/create-payment-intent", async (req, res) => {
-
-            const booking = req.body
+        // stripe implementation
+        app.post('/create-payment-intent', async (req, res) => {
+            const booking = req.body;
             const price = booking.price;
             const amount = price * 100;
 
             const paymentIntent = await stripe.paymentIntents.create({
+                currency: 'usd',
                 amount: amount,
-                currency: "usd",
-                "payment-method-types": ["card"]
+                "payment_method_types": [
+                    "card"
+                ]
             });
-
             res.send({
                 clientSecret: paymentIntent.client_secret,
             });
         });
 
+
+        app.post('/payments', async (req, res) => {
+            const payment = req.body;
+            const result = await paymentCollection.insertOne(payment)
+            const id = payment.bookingId
+            const filter = {
+                _id: ObjectId(id)
+            }
+            const updatedDoc = {
+                $set: {
+                    paid: true,
+                    transactionId: payment.transactionId
+                }
+            }
+            const updatedResult = await bookingsCollection.updateOne(filter, updatedDoc)
+            res.send(result)
+        })
 
 
         app.get('/jwt', async (req, res) => {
